@@ -1,7 +1,10 @@
-name: Build Armbian (Multi-Kernel)
+name: Build Armbian + DTB
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -9,10 +12,10 @@ jobs:
     strategy:
       matrix:
         branch: [legacy, current, edge]
-    name: Build ${{ matrix.branch }} kernel
+    name: Build Armbian ${{ matrix.branch }} kernel
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -20,20 +23,39 @@ jobs:
           sudo apt update
           sudo apt install -y git gcc g++ build-essential \
             bc libncurses5-dev libssl-dev bison flex \
-            libz-dev libncurses-dev \
-            qemu-user-static binfmt-support debootstrap \
-            device-tree-compiler python3 python3-distutils \
-            python3-apt libglib2.0-dev
+            libz-dev libncurses-dev qemu-user-static \
+            binfmt-support debootstrap device-tree-compiler \
+            python3 python3-distutils python3-apt libglib2.0-dev
+
+      - name: Upgrade DTS & generate DTB
+        run: |
+          python3 scripts/rk3566_dtb_upgrade.py dtb/rk3566-roc-pc.dtb linux-6.x
 
       - name: Build Armbian (${{ matrix.branch }})
         run: |
           ./compile.sh BOARD=rockchip64 BRANCH=${{ matrix.branch }} \
             RELEASE=bookworm BUILD_DESKTOP=no KERNEL_CONFIGURE=no
 
-      - name: Upload artifact (${{ matrix.branch }})
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: armbian-image-${{ matrix.branch }}
-          path: output/images/*.img
+          name: armbian-${{ matrix.branch }}
+          path: |
+            output/images/*.img
+            dtb/rk3566-roc-pc_v6.dtb
           compression-level: 9
           if-no-files-found: error
+
+  dispatch:
+    runs-on: ubuntu-22.04
+    needs: build
+    steps:
+      - name: Trigger downstream workflow
+        run: |
+          curl -i \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -X POST \
+            --data '{"event_type":"armbian-build-complete"}' \
+            https://api.github.com/repos/<OWNER>/<REPO>/dispatches
