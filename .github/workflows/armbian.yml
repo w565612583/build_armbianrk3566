@@ -1,19 +1,19 @@
 name: Build Armbian (Multi-Kernel)
 
 on:
-  workflow_dispatch:   # 手动触发
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        branch: [legacy, current, edge]   # 同时编译三种内核分支
+        branch: [legacy, current, edge]
     name: Build ${{ matrix.branch }} kernel
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
@@ -31,7 +31,9 @@ jobs:
             RELEASE=bookworm BUILD_DESKTOP=no KERNEL_CONFIGURE=no
 
       - name: Upload artifact (${{ matrix.branch }})
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: armbian-image-${{ matrix.branch }}
           path: output/images/*.img
+          compression-level: 9
+          if-no-files-found: error
