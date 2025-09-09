@@ -1,21 +1,14 @@
-name: Build Armbian + DTB
+name: Build Armbian and Notify
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        branch: [legacy, current, edge]
-    name: Build Armbian ${{ matrix.branch }} kernel
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
@@ -23,39 +16,35 @@ jobs:
           sudo apt update
           sudo apt install -y git gcc g++ build-essential \
             bc libncurses5-dev libssl-dev bison flex \
-            libz-dev libncurses-dev qemu-user-static \
-            binfmt-support debootstrap device-tree-compiler \
-            python3 python3-distutils python3-apt libglib2.0-dev
+            libz-dev libncurses-dev \
+            qemu-user-static binfmt-support debootstrap \
+            device-tree-compiler python3 python3-distutils \
+            python3-apt libglib2.0-dev
 
-      - name: Upgrade DTS & generate DTB
+      - name: Build Armbian
         run: |
-          python3 scripts/rk3566_dtb_upgrade.py dtb/rk3566-roc-pc.dtb linux-6.x
+          ./compile.sh BOARD=rockchip64 BRANCH=current RELEASE=bookworm \
+            BUILD_DESKTOP=no KERNEL_CONFIGURE=no
 
-      - name: Build Armbian (${{ matrix.branch }})
-        run: |
-          ./compile.sh BOARD=rockchip64 BRANCH=${{ matrix.branch }} \
-            RELEASE=bookworm BUILD_DESKTOP=no KERNEL_CONFIGURE=no
-
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: armbian-${{ matrix.branch }}
-          path: |
-            output/images/*.img
-            dtb/rk3566-roc-pc_v6.dtb
-          compression-level: 9
-          if-no-files-found: error
+          name: armbian-image
+          path: output/images/*.img
 
-  dispatch:
-    runs-on: ubuntu-22.04
-    needs: build
-    steps:
-      - name: Trigger downstream workflow
+      - name: Notify server via curl
         run: |
-          curl -i \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -X POST \
-            --data '{"event_type":"armbian-build-complete"}' \
-            https://api.github.com/repos/<OWNER>/<REPO>/dispatches
+          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Artifact URL: $ARTIFACT_URL"
+
+          if [ -n "${{ secrets.API_TOKEN }}" ]; then
+            curl -i \
+              -H "Accept: application/json" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
+              -X POST \
+              --data "{\"status\":\"success\",\"message\":\"Armbian build completed\",\"artifact_url\":\"$ARTIFACT_URL\"}" \
+              https://example.com/api/notify
+          else
+            echo "API_TOKEN not set, skipping notification."
+          fi
