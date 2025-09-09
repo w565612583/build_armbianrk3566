@@ -1,7 +1,10 @@
-name: Build Armbian and Notify
+name: Build Armbian
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:   # 手动触发
+  push:                # 或者每次 push 时触发
+    branches:
+      - main
 
 jobs:
   build:
@@ -31,20 +34,3 @@ jobs:
         with:
           name: armbian-image
           path: output/images/*.img
-
-      - name: Notify server via curl
-        run: |
-          ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "Artifact URL: $ARTIFACT_URL"
-
-          if [ -n "${{ secrets.API_TOKEN }}" ]; then
-            curl -i \
-              -H "Accept: application/json" \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" \
-              -X POST \
-              --data "{\"status\":\"success\",\"message\":\"Armbian build completed\",\"artifact_url\":\"$ARTIFACT_URL\"}" \
-              https://example.com/api/notify
-          else
-            echo "API_TOKEN not set, skipping notification."
-          fi
